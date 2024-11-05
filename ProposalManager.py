@@ -11,9 +11,9 @@ from bs4 import BeautifulSoup
 class Output:
 
     def __init__(self):
-        self.exit_when_error = True
-        self.print_info = True
-        self.with_color = True
+        self.exit_when_error = False # 遇到 ERROR 时终止程序
+        self.print_info = True # 输出 INFO 信息
+        self.with_color = True # 带有颜色的输出
 
         # 定义颜色代码
         self.color_codes = {
@@ -171,6 +171,7 @@ class ProposalManagerApp:
                 content['JVET number'].str.contains(keyword, case=False, na=False)
                 ]
         except FileNotFoundError as _:
+            matched = None
             self.out.error(f'打开数据库 {self.db_name} 失败！')
 
         if matched is not None:
@@ -195,19 +196,28 @@ class ProposalManagerApp:
             if not os.path.exists(download):
                 os.mkdir(download)
 
-            for index, row in matched.iterrows():
-
+            for index, (_, row) in enumerate(matched.iterrows()):
                 url = row['Download Link']
-                response = requests.get(url)
-                if response.status_code == 200:
-                    filename = os.path.basename(url)
-                    file_path = os.path.join(download, filename)
-                    with open(file_path, 'wb') as f:
-                        f.write(response.content)
-                    self.out.info(f"下载提案 {row['JVET number']} 成功")
+                filename = os.path.basename(url)
+                file_path = os.path.join(download, filename)
+                if os.path.exists(file_path):
+                    self.out.info(f"({index+1}/{len(matched)}) 提案 {row['JVET number']} 已存在于本地目录")
+                    continue
 
-                else:
-                    self.out.info(f"下载提案 {row['JVET number']} 失败，状态码：{response.status_code}")
+                try:
+                    # 请求下载
+                    response = requests.get(url, timeout=(5, 15))
+                    if response.status_code == 200:
+                        with open(file_path, 'wb') as f:
+                            f.write(response.content)
+                        self.out.info(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 成功")
+                    else:
+                        self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 失败，状态码：{response.status_code}")
+
+                except Exception:
+                    self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 请求错误")
+
+            self.out.info(f'下载提案完成，下载目录： {download}......')
 
 
 def main():
