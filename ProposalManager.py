@@ -1,6 +1,9 @@
 
 import os
 import argparse
+import threading
+import time
+
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -10,16 +13,36 @@ class Output:
     def __init__(self):
         self.exit_when_error = True
         self.print_info = True
+        self.with_color = True
+
+        # 定义颜色代码
+        self.color_codes = {
+            "black": "\033[30m",
+            "red": "\033[31m",
+            "green": "\033[32m",
+            "yellow": "\033[33m",
+            "blue": "\033[34m",
+            "magenta": "\033[35m",
+            "cyan": "\033[36m",
+            "white": "\033[37m",
+            "reset": "\033[0m"
+        }
+
+    def print_with_color(self, information, color=None):
+
+        if self.with_color and color:
+            print(f"{self.color_codes[color]}{information}{self.color_codes['reset']}")
+        else:
+            print(information)
 
     def error(self, information):
-        print(f'[ERROR]: {information}')
+        self.print_with_color(f'[ERROR]: {information}', 'red')
         if self.exit_when_error:
             exit(0)
 
-    def info(self, information):
+    def info(self, information, color=None):
         if self.print_info:
-            print(f'[INFO]: {information}')
-
+            self.print_with_color(f'[INFO]: {information}', color)
 
 def number_to_letters(n):
     n -= 164
@@ -30,7 +53,6 @@ def number_to_letters(n):
         n //= 26
     return letter
 
-
 class ProposalManagerApp:
 
     def __init__(self, db_name='proposals.csv'):
@@ -40,14 +62,27 @@ class ProposalManagerApp:
 
         # initiate database
         if not os.path.exists(self.db_name):
-            self.out.info(f'数据库 {self.db_name} 不存在！')
+            self.out.info(f'数据库 {self.db_name} 不存在！', 'red')
         else:
-            self.out.info(f'已连接到数据库 {self.db_name}')
+            self.out.info(f'已连接到数据库 {self.db_name}', 'green')
 
     def fetch_meeting_data(self, id_meeting):
 
         base_url = 'https://jvet-experts.org'
         meeting_url = f'/doc_end_user/current_meeting.php?id_meeting={id_meeting}&search_id_group=1&search_sub_group=1'
+
+        def match_proposal_type(title:str):
+            # 解析提案类型
+            proposal_type = title.split(' ')[0].split(':')[0].lower()
+            if 'ee' in proposal_type or 'ce' in proposal_type:
+                proposal_type = 1
+            elif 'ahg' in proposal_type:
+                proposal_type = 2
+            elif 'cross' in proposal_type:
+                proposal_type = 3
+            else:
+                proposal_type = 0
+            return proposal_type
 
         # 获取文件列表
         url = base_url + meeting_url
@@ -71,34 +106,60 @@ class ProposalManagerApp:
                             zip_file = zip_file[0].replace('..', '')
                             zip_file = base_url + zip_file
                             row_data = row_data[:7]
-                            row_data.append(zip_file)
+                            row_data.append(zip_file) # 文件链接
+                            row_data.append(match_proposal_type(row_data[5])) # 提案类型
                             datas.append(row_data)
-
             return datas
 
         else:
             self.out.error(f'解析 {number_to_letters(id_meeting)} 会议时获取 HTML 失败！')
             return None
 
-    def run_fetch(self):
-        beg, end = 165, 200 # 起止会议的编号，根据JVET网站的结构，165代表第一次会议
-        all_proposals = []
-        self.out.info(f'开始解析 {number_to_letters(beg)}-{number_to_letters(end)} 会议......')
-        for id_meeting in range(beg, end+1):
+    def run_fetch(self, beg=165, end=200):
+        # 起止会议的编号，根据JVET网站的结构，165代表第一次会议
 
-            proposals = self.fetch_meeting_data(id_meeting)
+        proposal_lists = [None] * (end - beg + 1)  # 初始化一个有序的结果列表
+        self.out.info(f'开始解析 {number_to_letters(beg)} - {number_to_letters(end)} 会议（采用多线程，输出顺序可能混乱）......')
+
+        start_time = time.time()  # 记录开始时间
+
+        # 定义线程锁
+        lock = threading.Lock()
+
+        # 定义线程任务函数
+        def fetch_data_and_collect(mid: int):
+            proposals = self.fetch_meeting_data(mid)
             if proposals is None:
-                self.out.error(f'解析 {number_to_letters(id_meeting)} 会议失败')
+                self.out.error(f'解析 {number_to_letters(mid)} 会议失败')
             else:
-                self.out.info(f'解析 {number_to_letters(id_meeting)} 会议成功，获取到 {len(proposals)} 份有效提案')
-                all_proposals = all_proposals + proposals
+                self.out.info(f'解析 {number_to_letters(mid)} 会议成功，获取到 {len(proposals)} 份有效提案')
+                with lock:
+                    proposal_lists[mid-beg] = proposals  # 将结果按顺序插入
+
+        # 启动线程池并行解析会议数据
+        threads = []
+        for id_meeting in range(beg, end + 1):
+            thread = threading.Thread(target=fetch_data_and_collect, args=(id_meeting,))
+            threads.append(thread)
+            thread.start()
+
+        # 等待所有线程完成
+        for thread in threads:
+            thread.join()
+
+        # 合并结果为一个列表
+        all_proposals = [proposal for proposal_list in proposal_lists for proposal in (proposal_list or [])]
+
+        end_time = time.time()  # 记录结束时间
+        execution_time = end_time - start_time
+        self.out.info(f"执行时间: {execution_time:.2f} 秒")
 
         self.out.info(f'解析完成，共计获取到 {len(all_proposals)} 份有效提案，正在写入文件......')
-        headers = ['JVET number','MPEG number','Created','First upload','Last upload','Title','Source','Download Link']
+        headers = ['JVET number','MPEG number','Created','First upload','Last upload','Title','Source','Download Link','Type']
         df = pd.DataFrame(all_proposals, columns=headers)
         # 保存DataFrame为CSV文件
         df.to_csv(self.db_name, index=False, encoding='utf-8')
-        self.out.info(f'写入文件 {self.db_name} 成功！')
+        self.out.info(f'写入文件 {self.db_name} 成功！', 'green')
 
     def run_search(self, keyword, download):
 
@@ -115,7 +176,16 @@ class ProposalManagerApp:
         if matched is not None:
             self.out.info(f'关键字「{keyword}」共匹配到 {len(matched)} 份提案：')
             for index, row in matched.iterrows():
-                self.out.info(f"{row['JVET number']}: {row['Title']}")
+                if row['Type'] == 1:
+                    color = 'yellow'
+                elif row['Type'] == 2:
+                    color = 'blue'
+                elif row['Type'] == 3:
+                    color = 'cyan'
+                else:
+                    color = 'black'
+
+                self.out.info(f"{row['JVET number']}: {row['Title']}", color)
         else:
             self.out.info(f'关键字「{keyword}」没有匹配到任何提案')
             return None

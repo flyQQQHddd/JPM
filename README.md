@@ -10,6 +10,10 @@ JVET Proposal Manager 是一个用 Python 实现的命令行工具，用于管�
 - 搜索提案：根据关键字搜索提案的标题或编号。
 - 下载提案：按搜索结果批量下载提案文件。
 
+## 更新
+
+- 11.5: 添加彩色输出系统，添加提案分类功能，引入多线程处理
+
 ## 依赖
 
 - requests
@@ -29,7 +33,7 @@ pip install requests pandas beautifulsoup4 lxml
 使用 --update 选项来从 JVET 网站获取会议提案并更新到本地数据库中。数据将保存到名为 proposals.csv 的文件中（默认值）。
 
 ```python
-python proposal_manager.py --update
+python ProposalManager.py --update
 ```
 
 ### 搜索提案
@@ -37,13 +41,13 @@ python proposal_manager.py --update
 使用 --search 选项，根据关键字在提案的标题和编号中搜索匹配项。
 
 ```python
-python proposal_manager.py --search <关键字>
+python ProposalManager.py --search <关键字>
 ```
 
 例如，搜索包含“编码”的提案：
 
 ```python
-python proposal_manager.py --search 编码
+python ProposalManager.py --search 编码
 ```
 
 ### 下载提案
@@ -51,13 +55,13 @@ python proposal_manager.py --search 编码
 使用 --download 参数指定下载路径，可将搜索结果中的提案文件批量下载到指定目录中。
 
 ```python
-python proposal_manager.py --search <关键字> --download <下载路径>
+python ProposalManager.py --search <关键字> --download <下载路径>
 ```
 
 例如，将匹配到的提案下载到 proposals 目录中：
 
 ```python
-python proposal_manager.py --search 编码 --download proposals
+python ProposalManager.py --search 编码 --download proposals
 ```
 
 

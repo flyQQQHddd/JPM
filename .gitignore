@@ -2,6 +2,7 @@
 # 未完成的功能
 extract_abstract.py
 extract_docx.sh
+.DS_Store
 
 /download
 /.idea
