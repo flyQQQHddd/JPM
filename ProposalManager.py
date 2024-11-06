@@ -161,7 +161,7 @@ class ProposalManagerApp:
         df.to_csv(self.db_name, index=False, encoding='utf-8')
         self.out.info(f'写入文件 {self.db_name} 成功！', 'green')
 
-    def run_search(self, keyword, download):
+    def run_search(self, keyword, download, output):
 
         matched = None
         try:
@@ -192,14 +192,14 @@ class ProposalManagerApp:
             return None
 
         if download:
-            self.out.info(f'开始下载提案到目录 {download}......')
-            if not os.path.exists(download):
-                os.mkdir(download)
+            self.out.info(f'开始下载提案到目录 {output}......')
+            if not os.path.exists(output):
+                os.mkdir(output)
 
             for index, (_, row) in enumerate(matched.iterrows()):
                 url = row['Download Link']
                 filename = os.path.basename(url)
-                file_path = os.path.join(download, filename)
+                file_path = os.path.join(output, filename)
                 if os.path.exists(file_path):
                     self.out.info(f"({index+1}/{len(matched)}) 提案 {row['JVET number']} 已存在于本地目录")
                     continue
@@ -217,25 +217,40 @@ class ProposalManagerApp:
                 except Exception:
                     self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 请求错误")
 
-            self.out.info(f'下载提案完成，下载目录： {download}......')
+            self.out.info(f'下载提案完成到下载目录 {output}')
 
 
 def main():
-    parser = argparse.ArgumentParser(description='JVET Proposal Manager')
-    parser.add_argument('--update', action='store_true', help='Fetch proposals from JVET website')
-    parser.add_argument('--search', type=str, help='Search for proposals by keyword')
-    parser.add_argument('--download', type=str, help='Download proposals in search results')
 
+    # 创建主解析器
+    parser = argparse.ArgumentParser(description='JVET Proposal Manager')
+    parser.add_argument('-v', '--version', action='version', version='JVET Proposal Manager 1.0')
+
+    # 添加子解析器
+    subparsers = parser.add_subparsers(title='Commands', dest='command', required=True)
+
+    # fetch 子命令
+    fetch_parser = subparsers.add_parser('fetch', help='Fetch the latest proposals from the JVET website')
+
+    # search 子命令
+    search_parser = subparsers.add_parser('search', help='Search for proposals by keyword')
+    search_parser.add_argument('-k', '--keyword', type=str, required=True,
+                               help='Keyword to search for in proposals')
+    search_parser.add_argument('-d', '--download', action='store_true',
+                               help='Download proposals that match the search results')
+    search_parser.add_argument('-o', '--output', type=str, default='download',
+                               help='Directory path to save downloaded proposals (default: ./download)')
+
+    # 解析参数
     args = parser.parse_args()
     app = ProposalManagerApp()
 
-    if args.update:
+    # 根据子命令执行不同的逻辑
+    if args.command == 'fetch':
         app.run_fetch()
-    elif args.search:
-        app.run_search(args.search, args.download)
-    else:
-        parser.print_help()
 
+    elif args.command == 'search':
+        app.run_search(args.keyword, args.download, args.output)
 
 if __name__ == '__main__':
     main()

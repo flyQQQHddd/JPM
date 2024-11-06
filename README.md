@@ -12,6 +12,7 @@ JVET Proposal Manager 是一个用 Python 实现的命令行工具，用于管�
 
 ## 更新
 
+- 11.6: 优化命令行的使用
 - 11.5: 提升下载稳定性
 - 11.5: 添加彩色输出系统，添加提案分类功能，引入多线程处理
 
@@ -27,44 +28,62 @@ JVET Proposal Manager 是一个用 Python 实现的命令行工具，用于管�
 pip install requests pandas beautifulsoup4 lxml
 ```
 
-## 使用方法
+## 快速开始
 
-### 更新提案数据库
-
-使用 --update 选项来从 JVET 网站获取会议提案并更新到本地数据库中。数据将保存到名为 proposals.csv 的文件中（默认值）。
-
-```python
-python ProposalManager.py --update
+```shell
+# 更新数据库
+python ProposalManager.py fetch
+# 检索提案
+python ProposalManager.py search -k <keyword>
+# 检索并下载提案
+python ProposalManager.py search -k <keyword> -d
+# 检索并下载提案并指定下载路径
+python ProposalManager.py search -k <keyword> -d -o <dir>
 ```
 
-### 搜索提案
+## 使用文档
 
-使用 --search 选项，根据关键字在提案的标题和编号中搜索匹配项。
+```plaintxt
+usage: ProposalManager.py [-h] [-v] {fetch,search} ...
 
-```python
-python ProposalManager.py --search <关键字>
+JVET Proposal Manager
+
+options:
+  -h, --help      show this help message and exit
+  -v, --version   show program's version number and exit
+
+Commands:
+  {fetch,search}
+    fetch         Fetch the latest proposals from the JVET website
+    search        Search for proposals by keyword
 ```
 
-例如，搜索包含“编码”的提案：
+### fetch 子命令
 
-```python
-python ProposalManager.py --search 编码
+使用 fetch 命令，
+
+```plaintxt
+usage: ProposalManager.py fetch [-h]
+
+options:
+  -h, --help  show this help message and exit
 ```
 
-### 下载提案
+### search 子命令
 
-使用 --download 参数指定下载路径，可将搜索结果中的提案文件批量下载到指定目录中。
+使用 search 命令，根据关键字在提案的标题和编号中搜索匹配项。
 
-```python
-python ProposalManager.py --search <关键字> --download <下载路径>
+```plaintxt
+usage: ProposalManager.py search [-h] -k KEYWORD [-d] [-o OUTPUT]
+
+options:
+  -h, --help            show this help message and exit
+  -k KEYWORD, --keyword KEYWORD
+                        Keyword to search for in proposals
+  -d, --download        Download proposals that match the search results
+  -o OUTPUT, --output OUTPUT
+                        Directory path to save downloaded proposals (default: ./download)
 ```
-
-例如，将匹配到的提案下载到 proposals 目录中：
-
-```python
-python ProposalManager.py --search 编码 --download proposals
-```
-
 
 ## 项目结构
 
