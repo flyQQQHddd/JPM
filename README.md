@@ -12,6 +12,7 @@ JVET Proposal Manager 是一个用 Python 实现的命令行工具，用于管�
 
 ## 更新
 
+- 11.7: 新增提取docx的功能
 - 11.6: 优化命令行的使用
 - 11.5: 提升下载稳定性
 - 11.5: 添加彩色输出系统，添加提案分类功能，引入多线程处理
@@ -39,6 +40,8 @@ python ProposalManager.py search -k <keyword>
 python ProposalManager.py search -k <keyword> -d
 # 检索并下载提案并指定下载路径
 python ProposalManager.py search -k <keyword> -d -o <dir>
+# 从zip中提取docx
+python ProposalManager.py extract -i <input dir> -o <output dir>
 ```
 
 ## 使用文档
@@ -83,6 +86,19 @@ options:
   -d, --download        Download proposals that match the search results
   -o OUTPUT, --output OUTPUT
                         Directory path to save downloaded proposals (default: ./download)
+```
+
+### extract 子命令
+
+```plaintxt
+usage: ProposalManager.py extract [-h] -i INPUT -o OUTPUT
+
+options:
+  -h, --help            show this help message and exit
+  -i INPUT, --input INPUT
+                        Directory path containing the zip files
+  -o OUTPUT, --output OUTPUT
+                        Directory path where extracted .docx files will be saved
 ```
 
 ## 项目结构

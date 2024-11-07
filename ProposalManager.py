@@ -1,9 +1,12 @@
 
-import os
+
 import argparse
 import threading
 import time
-
+import os
+import shutil
+import zipfile
+import tempfile
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -61,10 +64,10 @@ class ProposalManagerApp:
         self.out = Output()
 
         # initiate database
-        if not os.path.exists(self.db_name):
-            self.out.info(f'数据库 {self.db_name} 不存在！', 'red')
-        else:
-            self.out.info(f'已连接到数据库 {self.db_name}', 'green')
+        # if not os.path.exists(self.db_name):
+        #     self.out.info(f'数据库 {self.db_name} 不存在！', 'red')
+        # else:
+        #     self.out.info(f'已连接到数据库 {self.db_name}', 'green')
 
     def fetch_meeting_data(self, id_meeting):
 
@@ -219,6 +222,34 @@ class ProposalManagerApp:
 
             self.out.info(f'下载提案完成到下载目录 {output}')
 
+    def extract_docx_files(self, source_dir, destination_dir):
+        # 检查源文件夹是否存在
+        if not os.path.isdir(source_dir):
+            self.out.error(f"错误: 源文件夹不存在: {source_dir}")
+        # 创建目标文件夹（如果不存在）
+        os.makedirs(destination_dir, exist_ok=True)
+
+        # 遍历源文件夹中的所有 zip 文件（递归查找）
+        for root, _, files in os.walk(source_dir):
+            for file in files:
+                if file.endswith(".zip"):
+                    zip_path = str(os.path.join(root, file))
+
+                    # 创建一个临时文件夹用于解压缩
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        # 解压到临时文件夹
+                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                            zip_ref.extractall(temp_dir)
+
+                        # 查找解压后的 docx 文件，排除以 . 和 ~ 开头的文件
+                        for docx_root, _, docx_files in os.walk(temp_dir):
+                            for docx_file in docx_files:
+                                if docx_file.endswith(".docx") and not docx_file.startswith((".", "~")):
+                                    docx_path = os.path.join(docx_root, docx_file)
+                                    # 将 docx 文件复制到目标文件夹
+                                    shutil.copy(docx_path, destination_dir)
+
+        self.out.info(f"所有 docx 文件已提取到: {destination_dir}")
 
 def main():
 
@@ -241,6 +272,13 @@ def main():
     search_parser.add_argument('-o', '--output', type=str, default='download',
                                help='Directory path to save downloaded proposals (default: ./download)')
 
+    # extract 子命令
+    extract_parser = subparsers.add_parser('extract', help='Extract .docx files from zip archives')
+    extract_parser.add_argument('-i', '--input', type=str, required=True,
+                                help='Directory path containing the zip files')
+    extract_parser.add_argument('-o', '--output', type=str, required=True,
+                                help='Directory path where extracted .docx files will be saved')
+
     # 解析参数
     args = parser.parse_args()
     app = ProposalManagerApp()
@@ -248,9 +286,10 @@ def main():
     # 根据子命令执行不同的逻辑
     if args.command == 'fetch':
         app.run_fetch()
-
     elif args.command == 'search':
         app.run_search(args.keyword, args.download, args.output)
+    elif args.command == 'extract':
+        app.extract_docx_files(args.input, args.output)
 
 if __name__ == '__main__':
     main()
