@@ -1,5 +1,4 @@
 
-
 import argparse
 import threading
 import time
@@ -15,8 +14,8 @@ class Output:
 
     def __init__(self):
         self.exit_when_error = False # 遇到 ERROR 时终止程序
-        self.print_info = True # 输出 INFO 信息
-        self.with_color = True # 带有颜色的输出
+        self.print_info = True       # 输出 INFO 信息
+        self.with_color = False      # 带有颜色的输出
 
         # 定义颜色代码
         self.color_codes = {
@@ -56,18 +55,41 @@ def number_to_letters(n):
         n //= 26
     return letter
 
-class ProposalManagerApp:
+class ProposalSearcherApp:
 
     def __init__(self, db_name='proposals.csv'):
 
         self.db_name = db_name
         self.out = Output()
+        self.parser = argparse.ArgumentParser(description='JVET Proposal Searcher')
 
-        # initiate database
-        # if not os.path.exists(self.db_name):
-        #     self.out.info(f'数据库 {self.db_name} 不存在！', 'red')
-        # else:
-        #     self.out.info(f'已连接到数据库 {self.db_name}', 'green')
+    def init_parser(self):
+
+        # 创建主解析器以及子解析器
+        self.parser = argparse.ArgumentParser(description='JVET Proposal Searcher')
+        self.parser.add_argument('-v', '--version', action='version', version='JVET Proposal Searcher 1.0')
+        subparsers = self.parser.add_subparsers(title='Commands', dest='command', required=True)
+
+        # fetch 子命令
+        fetch_parser = subparsers.add_parser('fetch', help='Fetch the latest proposals from the JVET website')
+
+        # search 子命令
+        search_parser = subparsers.add_parser('search', help='Search for proposals by keyword')
+        search_parser.add_argument('-k', '--keyword', type=str, required=True,
+                                   help='Keyword to search for in proposals')
+        search_parser.add_argument('-d', '--download', action='store_true',
+                                   help='Download proposals that match the search results')
+        search_parser.add_argument('-o', '--output', type=str, default='download',
+                                   help='Directory path to save downloaded proposals (default: ./download)')
+
+        # extract 子命令
+        extract_parser = subparsers.add_parser('extract', help='Extract .docx files from zip archives')
+        extract_parser.add_argument('-i', '--input', type=str, required=True,
+                                    help='Directory path containing the zip files')
+        extract_parser.add_argument('-o', '--output', type=str, required=True,
+                                    help='Directory path where extracted .docx files will be saved')
+
+        return self.parser.parse_args()
 
     def fetch_meeting_data(self, id_meeting):
 
@@ -118,8 +140,11 @@ class ProposalManagerApp:
             self.out.error(f'解析 {number_to_letters(id_meeting)} 会议时获取 HTML 失败！')
             return None
 
-    def run_fetch(self, beg=165, end=200):
+    def run_fetch(self, beg=1, end=36):
+
         # 起止会议的编号，根据JVET网站的结构，165代表第一次会议
+        beg = beg + 164
+        end = end + 164
 
         proposal_lists = [None] * (end - beg + 1)  # 初始化一个有序的结果列表
         self.out.info(f'开始解析 {number_to_letters(beg)} - {number_to_letters(end)} 会议（采用多线程，输出顺序可能混乱）......')
@@ -164,9 +189,10 @@ class ProposalManagerApp:
         df.to_csv(self.db_name, index=False, encoding='utf-8')
         self.out.info(f'写入文件 {self.db_name} 成功！', 'green')
 
-    def run_search(self, keyword, download, output):
+    def run_search(self, keyword, download, download_dir):
 
         matched = None
+
         try:
             content = pd.read_csv(self.db_name, sep=',', header=0, encoding='utf-8')
             matched = content[
@@ -176,6 +202,7 @@ class ProposalManagerApp:
         except FileNotFoundError as _:
             matched = None
             self.out.error(f'打开数据库 {self.db_name} 失败！')
+            return None
 
         if matched is not None:
             self.out.info(f'关键字「{keyword}」共匹配到 {len(matched)} 份提案：')
@@ -195,14 +222,13 @@ class ProposalManagerApp:
             return None
 
         if download:
-            self.out.info(f'开始下载提案到目录 {output}......')
-            if not os.path.exists(output):
-                os.mkdir(output)
+            self.out.info(f'开始下载提案到目录 {download_dir}......')
+            os.makedirs(download_dir, exist_ok=True)
 
             for index, (_, row) in enumerate(matched.iterrows()):
                 url = row['Download Link']
                 filename = os.path.basename(url)
-                file_path = os.path.join(output, filename)
+                file_path = os.path.join(download_dir, filename)
                 if os.path.exists(file_path):
                     self.out.info(f"({index+1}/{len(matched)}) 提案 {row['JVET number']} 已存在于本地目录")
                     continue
@@ -220,12 +246,14 @@ class ProposalManagerApp:
                 except Exception:
                     self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 请求错误")
 
-            self.out.info(f'下载提案完成到下载目录 {output}')
+            self.out.info(f'下载提案完成到下载目录 {download_dir}')
 
-    def extract_docx_files(self, source_dir, destination_dir):
+    def run_extract(self, source_dir, destination_dir):
+
         # 检查源文件夹是否存在
         if not os.path.isdir(source_dir):
             self.out.error(f"错误: 源文件夹不存在: {source_dir}")
+            return None
         # 创建目标文件夹（如果不存在）
         os.makedirs(destination_dir, exist_ok=True)
 
@@ -253,35 +281,9 @@ class ProposalManagerApp:
 
 def main():
 
-    # 创建主解析器
-    parser = argparse.ArgumentParser(description='JVET Proposal Manager')
-    parser.add_argument('-v', '--version', action='version', version='JVET Proposal Manager 1.0')
-
-    # 添加子解析器
-    subparsers = parser.add_subparsers(title='Commands', dest='command', required=True)
-
-    # fetch 子命令
-    fetch_parser = subparsers.add_parser('fetch', help='Fetch the latest proposals from the JVET website')
-
-    # search 子命令
-    search_parser = subparsers.add_parser('search', help='Search for proposals by keyword')
-    search_parser.add_argument('-k', '--keyword', type=str, required=True,
-                               help='Keyword to search for in proposals')
-    search_parser.add_argument('-d', '--download', action='store_true',
-                               help='Download proposals that match the search results')
-    search_parser.add_argument('-o', '--output', type=str, default='download',
-                               help='Directory path to save downloaded proposals (default: ./download)')
-
-    # extract 子命令
-    extract_parser = subparsers.add_parser('extract', help='Extract .docx files from zip archives')
-    extract_parser.add_argument('-i', '--input', type=str, required=True,
-                                help='Directory path containing the zip files')
-    extract_parser.add_argument('-o', '--output', type=str, required=True,
-                                help='Directory path where extracted .docx files will be saved')
-
     # 解析参数
-    args = parser.parse_args()
-    app = ProposalManagerApp()
+    app = ProposalSearcherApp()
+    args = app.init_parser()
 
     # 根据子命令执行不同的逻辑
     if args.command == 'fetch':
@@ -289,8 +291,9 @@ def main():
     elif args.command == 'search':
         app.run_search(args.keyword, args.download, args.output)
     elif args.command == 'extract':
-        app.extract_docx_files(args.input, args.output)
+        app.run_extract(args.input, args.output)
 
 if __name__ == '__main__':
+
     main()
 

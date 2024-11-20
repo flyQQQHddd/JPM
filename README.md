@@ -1,8 +1,8 @@
-# JVET Proposal Manager
+# JVET Proposal Searcher
 
 ## 介绍
 
-JVET Proposal Manager 是一个用 Python 实现的命令行工具，用于管理和下载 JVET（Joint Video Exploration Team）会议的提案数据。通过该工具，您可以从 JVET 网站上自动抓取会议提案，并将其保存到 CSV 数据库中，还可以按关键字搜索提案标题或编号，并批量下载匹配的提案文件。
+JVET Proposal Searcher 是一个用 Python 实现的命令行工具，用于管理和下载 JVET（Joint Video Exploration Team）会议的提案数据。通过该工具，您可以从 JVET 网站上自动抓取会议提案，并将其保存到 CSV 数据库中，还可以按关键字搜索提案标题或编号，并批量下载匹配的提案文件。
 
 ## 功能
 
@@ -33,32 +33,33 @@ pip install requests pandas beautifulsoup4 lxml
 
 ```shell
 # 更新数据库
-python ProposalManager.py fetch
+python ProposalSearcher.py fetch
 # 检索提案
-python ProposalManager.py search -k <keyword>
+python ProposalSearcher.py search -k <keyword>
 # 检索并下载提案
-python ProposalManager.py search -k <keyword> -d
+python ProposalSearcher.py search -k <keyword> -d
 # 检索并下载提案并指定下载路径
-python ProposalManager.py search -k <keyword> -d -o <dir>
+python ProposalSearcher.py search -k <keyword> -d -o <dir>
 # 从zip中提取docx
-python ProposalManager.py extract -i <input dir> -o <output dir>
+python ProposalSearcher.py extract -i <input dir> -o <output dir>
 ```
 
 ## 使用文档
 
 ```plaintxt
-usage: ProposalManager.py [-h] [-v] {fetch,search} ...
+usage: ProposalSearcher.py [-h] [-v] {fetch,search,extract} ...
 
-JVET Proposal Manager
+JVET Proposal Searcher
 
 options:
-  -h, --help      show this help message and exit
-  -v, --version   show program's version number and exit
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
 
 Commands:
-  {fetch,search}
-    fetch         Fetch the latest proposals from the JVET website
-    search        Search for proposals by keyword
+  {fetch,search,extract}
+    fetch               Fetch the latest proposals from the JVET website
+    search              Search for proposals by keyword
+    extract             Extract .docx files from zip archives
 ```
 
 ### fetch 子命令
@@ -66,7 +67,7 @@ Commands:
 使用 fetch 命令，
 
 ```plaintxt
-usage: ProposalManager.py fetch [-h]
+usage: ProposalSearcher.py fetch [-h]
 
 options:
   -h, --help  show this help message and exit
@@ -77,7 +78,7 @@ options:
 使用 search 命令，根据关键字在提案的标题和编号中搜索匹配项。
 
 ```plaintxt
-usage: ProposalManager.py search [-h] -k KEYWORD [-d] [-o OUTPUT]
+usage: ProposalSearcher.py search [-h] -k KEYWORD [-d] [-o OUTPUT]
 
 options:
   -h, --help            show this help message and exit
@@ -91,7 +92,7 @@ options:
 ### extract 子命令
 
 ```plaintxt
-usage: ProposalManager.py extract [-h] -i INPUT -o OUTPUT
+usage: ProposalSearcher.py extract [-h] -i INPUT -o OUTPUT
 
 options:
   -h, --help            show this help message and exit
@@ -103,7 +104,7 @@ options:
 
 ## 项目结构
 
-- ProposalManagerApp：主应用类，包含数据获取、搜索和下载的核心功能。
+- ProposalSearcherApp：主应用类，包含数据获取、搜索和下载的核心功能。
 - Output：日志输出类，用于打印错误和信息日志。
 - number_to_letters：将会议编号转换为字母编码。
 
