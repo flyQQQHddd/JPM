@@ -15,7 +15,7 @@ class Output:
     def __init__(self):
         self.exit_when_error = False # 遇到 ERROR 时终止程序
         self.print_info = True       # 输出 INFO 信息
-        self.with_color = False      # 带有颜色的输出
+        self.with_color = True       # 带有颜色的输出
 
         # 定义颜色代码
         self.color_codes = {
