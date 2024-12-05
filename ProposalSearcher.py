@@ -55,12 +55,10 @@ def number_to_letters(n):
         n //= 26
     return letter
 
-class ProposalSearcherApp:
+class Parser:
 
-    def __init__(self, db_name='proposals.csv'):
+    def __init__(self):
 
-        self.db_name = db_name
-        self.out = Output()
         self.parser = argparse.ArgumentParser(description='JVET Proposal Searcher')
 
     def init_parser(self):
@@ -69,6 +67,10 @@ class ProposalSearcherApp:
         self.parser = argparse.ArgumentParser(description='JVET Proposal Searcher')
         self.parser.add_argument('-v', '--version', action='version', version='JVET Proposal Searcher 1.0')
         subparsers = self.parser.add_subparsers(title='Commands', dest='command', required=True)
+
+        # 程序执行配置
+        self.parser.add_argument("--db_name", type=str, help="Database name")
+        self.parser.add_argument("--download_dir", type=str, help="Download directory")
 
         # fetch 子命令
         fetch_parser = subparsers.add_parser('fetch', help='Fetch the latest proposals from the JVET website')
@@ -79,8 +81,8 @@ class ProposalSearcherApp:
                                    help='Keyword to search for in proposals')
         search_parser.add_argument('-d', '--download', action='store_true',
                                    help='Download proposals that match the search results')
-        search_parser.add_argument('-o', '--output', type=str, default='download',
-                                   help='Directory path to save downloaded proposals (default: ./download)')
+        search_parser.add_argument('-o', '--output', type=str,
+                                   help='Directory path to save downloaded proposals')
 
         # extract 子命令
         extract_parser = subparsers.add_parser('extract', help='Extract .docx files from zip archives')
@@ -89,11 +91,50 @@ class ProposalSearcherApp:
         extract_parser.add_argument('-o', '--output', type=str, required=True,
                                     help='Directory path where extracted .docx files will be saved')
 
+        # information
+        information_parser = subparsers.add_parser('info', help='Information about JVET meetings')
+
         return self.parser.parse_args()
+
+class ProposalSearcherApp:
+
+    def __init__(self, db_name='proposals.csv', download_dir='download'):
+
+        self.db_name = db_name
+        self.out = Output()
+        self.download_dir = download_dir
+        self.base_url = 'https://jvet-experts.org'
+
+    def fetch_meeting_list(self):
+
+        meetings_url = "/doc_end_user/all_meeting.php"
+        url = self.base_url + meetings_url
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            # 获取表格
+            table = BeautifulSoup(response.text, 'lxml').find_all('table')[0]
+            # 提取表格数据
+            datas = []
+            for row in table.find_all('tr')[1:]:  # 跳过表头
+                columns = row.find_all('td')
+                if len(columns) >= 5:  # 确保有足够的列
+                    row_data = [column.text.strip() for column in columns]
+                    if row_data[0] != '':  # 确保不是空行
+                        links = row.find_all('a')
+                        links = [link['href'] for link in links]
+                        datas.append(row_data)
+
+            df = pd.DataFrame(datas, columns=["Number", "Name", "Start Date", "End Date", "USL"])
+            df.set_index("Number", inplace=True)
+            return df
+
+        else:
+            self.out.error(f'解析会议列表时获取 HTML 失败！')
+            return None
 
     def fetch_meeting_data(self, id_meeting):
 
-        base_url = 'https://jvet-experts.org'
         meeting_url = f'/doc_end_user/current_meeting.php?id_meeting={id_meeting}&search_id_group=1&search_sub_group=1'
 
         def match_proposal_type(title:str):
@@ -110,8 +151,8 @@ class ProposalSearcherApp:
             return proposal_type
 
         # 获取文件列表
-        url = base_url + meeting_url
-        response = requests.get(url.format(id_meeting))
+        url = self.base_url + meeting_url
+        response = requests.get(url)
 
         if response.status_code == 200:
 
@@ -129,7 +170,7 @@ class ProposalSearcherApp:
                         zip_file = list(filter(lambda link: link.endswith('.zip'), links))
                         if zip_file:  # 确保存在文件链接
                             zip_file = zip_file[0].replace('..', '')
-                            zip_file = base_url + zip_file
+                            zip_file = self.base_url + zip_file
                             row_data = row_data[:7]
                             row_data.append(zip_file) # 文件链接
                             row_data.append(match_proposal_type(row_data[5])) # 提案类型
@@ -142,9 +183,11 @@ class ProposalSearcherApp:
 
     def run_fetch(self, beg=1, end=36):
 
+        meetings = self.fetch_meeting_list()
+
         # 起止会议的编号，根据JVET网站的结构，165代表第一次会议
-        beg = beg + 164
-        end = end + 164
+        beg = 1 + 164
+        end = len(meetings) + 164
 
         proposal_lists = [None] * (end - beg + 1)  # 初始化一个有序的结果列表
         self.out.info(f'开始解析 {number_to_letters(beg)} - {number_to_letters(end)} 会议（采用多线程，输出顺序可能混乱）......')
@@ -182,16 +225,22 @@ class ProposalSearcherApp:
         execution_time = end_time - start_time
         self.out.info(f"执行时间: {execution_time:.2f} 秒")
 
-        self.out.info(f'解析完成，共计获取到 {len(all_proposals)} 份有效提案，正在写入文件......')
         headers = ['JVET number','MPEG number','Created','First upload','Last upload','Title','Source','Download Link','Type']
         df = pd.DataFrame(all_proposals, columns=headers)
+
+        self.out.info(f'解析完成，共计获取到 {len(all_proposals)} 份有效提案，正在写入文件......')
+        os.makedirs(os.path.dirname(self.db_name), exist_ok=True)
+
         # 保存DataFrame为CSV文件
         df.to_csv(self.db_name, index=False, encoding='utf-8')
         self.out.info(f'写入文件 {self.db_name} 成功！', 'green')
 
-    def run_search(self, keyword, download, download_dir):
+    def run_search(self, keyword, download, download_dir=None):
 
         matched = None
+
+        if download_dir is None:
+             download_dir = self.download_dir
 
         try:
             content = pd.read_csv(self.db_name, sep=',', header=0, encoding='utf-8')
@@ -279,19 +328,28 @@ class ProposalSearcherApp:
 
         self.out.info(f"所有 docx 文件已提取到: {destination_dir}")
 
+    def run_info(self):
+
+        meetings = self.fetch_meeting_list()
+        print(meetings)
+
+
 def main():
 
     # 解析参数
-    app = ProposalSearcherApp()
-    args = app.init_parser()
+    args = Parser().init_parser()
+    app = ProposalSearcherApp(args.db_name, args.download_dir)
 
     # 根据子命令执行不同的逻辑
     if args.command == 'fetch':
         app.run_fetch()
     elif args.command == 'search':
+        print(args.output)
         app.run_search(args.keyword, args.download, args.output)
     elif args.command == 'extract':
         app.run_extract(args.input, args.output)
+    elif args.command == 'info':
+        app.run_info()
 
 if __name__ == '__main__':
 
