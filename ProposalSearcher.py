@@ -30,21 +30,22 @@ class Output:
             "reset": "\033[0m"
         }
 
-    def print_with_color(self, information, color=None):
+    def _print_with_color(self, information, color=None):
 
         if self.with_color and color:
             print(f"{self.color_codes[color]}{information}{self.color_codes['reset']}")
         else:
             print(information)
 
-    def error(self, information):
-        self.print_with_color(f'[ERROR]: {information}', 'red')
-        if self.exit_when_error:
-            exit(0)
-
-    def info(self, information, color=None):
-        if self.print_info:
-            self.print_with_color(f'[INFO]: {information}', color)
+    def message(self, information, msg_type="INFO", color=None):
+        if msg_type == "INFO" and self.print_info:
+            self._print_with_color(f'[INFO]: {information}', color)
+        elif msg_type == "ERROR":
+            self._print_with_color(f'[ERROR]: {information}', 'red')
+            if self.exit_when_error:
+                exit(0)
+        else:
+            self.message("消息类型错误", "INFO", "yellow")
 
 def number_to_letters(n):
     n -= 164
@@ -130,7 +131,7 @@ class ProposalSearcherApp:
             return df
 
         else:
-            self.out.error(f'解析会议列表时获取 HTML 失败！')
+            self.out.message('解析会议列表时获取 HTML 失败！', 'ERROR')
             return None
 
     def fetch_meeting_data(self, id_meeting):
@@ -178,7 +179,7 @@ class ProposalSearcherApp:
             return datas
 
         else:
-            self.out.error(f'解析 {number_to_letters(id_meeting)} 会议时获取 HTML 失败！')
+            self.out.message(f'解析 {number_to_letters(id_meeting)} 会议时获取 HTML 失败！', "ERROR")
             return None
 
     def run_fetch(self, beg=1, end=36):
@@ -190,7 +191,7 @@ class ProposalSearcherApp:
         end = len(meetings) + 164
 
         proposal_lists = [None] * (end - beg + 1)  # 初始化一个有序的结果列表
-        self.out.info(f'开始解析 {number_to_letters(beg)} - {number_to_letters(end)} 会议（采用多线程，输出顺序可能混乱）......')
+        self.out.message(f'开始解析 {number_to_letters(beg)} - {number_to_letters(end)} 会议（采用多线程，输出顺序可能混乱）......')
 
         start_time = time.time()  # 记录开始时间
 
@@ -201,9 +202,9 @@ class ProposalSearcherApp:
         def fetch_data_and_collect(mid: int):
             proposals = self.fetch_meeting_data(mid)
             if proposals is None:
-                self.out.error(f'解析 {number_to_letters(mid)} 会议失败')
+                self.out.message(f'解析 {number_to_letters(mid)} 会议失败', 'ERROR')
             else:
-                self.out.info(f'解析 {number_to_letters(mid)} 会议成功，获取到 {len(proposals)} 份有效提案')
+                self.out.message(f'解析 {number_to_letters(mid)} 会议成功，获取到 {len(proposals)} 份有效提案')
                 with lock:
                     proposal_lists[mid-beg] = proposals  # 将结果按顺序插入
 
@@ -223,17 +224,17 @@ class ProposalSearcherApp:
 
         end_time = time.time()  # 记录结束时间
         execution_time = end_time - start_time
-        self.out.info(f"执行时间: {execution_time:.2f} 秒")
+        self.out.message(f"执行时间: {execution_time:.2f} 秒")
 
         headers = ['JVET number','MPEG number','Created','First upload','Last upload','Title','Source','Download Link','Type']
         df = pd.DataFrame(all_proposals, columns=headers)
 
-        self.out.info(f'解析完成，共计获取到 {len(all_proposals)} 份有效提案，正在写入文件......')
+        self.out.message(f'解析完成，共计获取到 {len(all_proposals)} 份有效提案，正在写入文件......')
         os.makedirs(os.path.dirname(self.db_name), exist_ok=True)
 
         # 保存DataFrame为CSV文件
         df.to_csv(self.db_name, index=False, encoding='utf-8')
-        self.out.info(f'写入文件 {self.db_name} 成功！', 'green')
+        self.out.message(f'写入文件 {self.db_name} 成功！', color='green')
 
     def run_search(self, keyword, download, download_dir=None):
 
@@ -250,11 +251,11 @@ class ProposalSearcherApp:
                 ]
         except FileNotFoundError as _:
             matched = None
-            self.out.error(f'打开数据库 {self.db_name} 失败！')
+            self.out.message(f'打开数据库 {self.db_name} 失败！', 'ERROR')
             return None
 
         if matched is not None:
-            self.out.info(f'关键字「{keyword}」共匹配到 {len(matched)} 份提案：')
+            self.out.message(f'关键字「{keyword}」共匹配到 {len(matched)} 份提案：')
             for index, row in matched.iterrows():
                 if row['Type'] == 1:
                     color = 'yellow'
@@ -265,13 +266,13 @@ class ProposalSearcherApp:
                 else:
                     color = 'black'
 
-                self.out.info(f"{row['JVET number']}: {row['Title']}", color)
+                self.out.message(f"{row['JVET number']}: {row['Title']}", color=color)
         else:
-            self.out.info(f'关键字「{keyword}」没有匹配到任何提案')
+            self.out.message(f'关键字「{keyword}」没有匹配到任何提案')
             return None
 
         if download:
-            self.out.info(f'开始下载提案到目录 {download_dir}......')
+            self.out.message(f'开始下载提案到目录 {download_dir}......')
             os.makedirs(download_dir, exist_ok=True)
 
             for index, (_, row) in enumerate(matched.iterrows()):
@@ -279,7 +280,7 @@ class ProposalSearcherApp:
                 filename = os.path.basename(url)
                 file_path = os.path.join(download_dir, filename)
                 if os.path.exists(file_path):
-                    self.out.info(f"({index+1}/{len(matched)}) 提案 {row['JVET number']} 已存在于本地目录")
+                    self.out.message(f"({index+1}/{len(matched)}) 提案 {row['JVET number']} 已存在于本地目录")
                     continue
 
                 try:
@@ -288,20 +289,20 @@ class ProposalSearcherApp:
                     if response.status_code == 200:
                         with open(file_path, 'wb') as f:
                             f.write(response.content)
-                        self.out.info(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 成功")
+                        self.out.message(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 成功")
                     else:
-                        self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 失败，状态码：{response.status_code}")
+                        self.out.message(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 失败，状态码：{response.status_code}", 'ERROR')
 
                 except Exception:
-                    self.out.error(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 请求错误")
+                    self.out.message(f"({index+1}/{len(matched)}) 下载提案 {row['JVET number']} 请求错误", 'ERROR')
 
-            self.out.info(f'下载提案完成到下载目录 {download_dir}')
+            self.out.message(f'下载提案完成到下载目录 {download_dir}')
 
     def run_extract(self, source_dir, destination_dir):
 
         # 检查源文件夹是否存在
         if not os.path.isdir(source_dir):
-            self.out.error(f"错误: 源文件夹不存在: {source_dir}")
+            self.out.message(f"源文件夹不存在: {source_dir}", 'ERROR')
             return None
         # 创建目标文件夹（如果不存在）
         os.makedirs(destination_dir, exist_ok=True)
@@ -326,7 +327,7 @@ class ProposalSearcherApp:
                                     # 将 docx 文件复制到目标文件夹
                                     shutil.copy(docx_path, destination_dir)
 
-        self.out.info(f"所有 docx 文件已提取到: {destination_dir}")
+        self.out.message(f"所有 docx 文件已提取到: {destination_dir}")
 
     def run_info(self):
 
@@ -344,7 +345,6 @@ def main():
     if args.command == 'fetch':
         app.run_fetch()
     elif args.command == 'search':
-        print(args.output)
         app.run_search(args.keyword, args.download, args.output)
     elif args.command == 'extract':
         app.run_extract(args.input, args.output)
